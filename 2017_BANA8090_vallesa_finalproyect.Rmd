@@ -1,0 +1,493 @@
+---
+title: "Final Project-U.S Domestic Flights"
+author: "Adrian Valles"
+output:
+  html_document: default
+  word_document: default
+---
+#A study on flight delays
+
+
+![](flight_delay_05.png)
+
+For my final project, I chose to explore the domestic flights in the U.s during 2015. Below are the different components of my study broken out on each tab.
+
+## Final project components
+
+## {.tabset .tabset-fade}
+###Introduction {.tabset .tabset-fade}
+
+**Problem Statement**
+
+Every year, millions of passengers experience flight delays resulting in missing connections and spending more time away from home. For instance, Do you imagine having a delay of 33 hours at your destination? This is what happened to an American Airlines flight that flew from Birmingham to Dallas the 23rd of January of 2015. Driving would have been a much better option! What if we could reduce the possibility of having a delay? 
+
+Through the analysis of all the national flights that took place in the US territory in 2015, we will try to explore what flights are more likely to be delayed. So, if you want to become an expert on dodging flight delays, keep reading!
+
+In order to address this problem, I will use the following methodology:
+
+1. Data preparation: Importing, merging and cleaning the data.
+2. Initial EDA: An introduction to the dataset.
+3. In depth EDA : Uncover new information
+
+
+Therefore, I hope this analysis helps customers to reduce the time spent away from home because of flight delays.
+Wouldn't be nice to have an estimation of the delay time before you even get to the airport? You should know that, on average, you will have a delay of 4 minutes per flight! 
+While I believe this analytical approach can help the customers reducing the time of delays,  a large number of unpredictable factors occur in each flight. As a consequence, it would be impossible to address this problem fully just with data analysis.
+
+###Packages Required {.tabset .tabset-fade}
+
+To analyze this data, the following packages are required :
+
+```{r message=FALSE, warning= FALSE}
+library("data.table") # package used for aggregation of large datasets
+library("maps")  #package used for map visuaization purposes
+library("leaflet") #package used for visualization purposes
+library("dplyr") # package used for data manipulation purposes
+library("ggplot2") # package used for data visualization purposes
+library("ggthemes") # Package usedto apply themes to plots
+library("DT")  # Package used to customize tables
+```
+
+
+###Data preparation {.tabset .tabset-fade}
+####Data source
+
+The data comes from the U.S. Department of Transportation's (DOT) Bureau of Transportation Statistics and you can take a look at it at the following link: [Kaggle]("https://www.kaggle.com/usdot/flight-delays"). The data is orginized in three separeate csv.files containing  all the national flights that took place in the US territory in 2015 as well as information about the airlines and the airports. The initial data contains 5819079 observations and 45 variables (divided within the three datafiles).The initial purpose of this data is to keep track of all the flights in U.S territory for security reasons. For further information on the U.S. Department of Transportation's, you can visit their [website]("https://www.transportation.gov/")
+
+One of the particularities of this dataset is that missing values are frequent. However, there is no need to delete those observations or to imput their values because they are located in observations that don't affect in our anlaysis. This is further explained in  the missing values treatment section.
+
+
+####Data importing and Cleaning
+
+The data is organized in the  following three csv.files
+```{r message=FALSE, warning=FALSE, error=FALSE}
+flights <- fread("flights.csv", showProgress = FALSE) 
+airports <- fread("airports.csv", showProgress = FALSE)
+airlines <- fread("airlines.csv", showProgress = FALSE)
+```
+
+First, I have created a single dataset containing all three files. For this, I have renamed the varible names to give consistency between the three files. I have then used the full_join function from the *dplyr* package to merge the data into a single dataset.
+
+```{r message=FALSE, warning=FALSE, error=FALSE}
+colnames(flights)[5] <- "AIRLINE_CODE"
+colnames(airlines)[1] <- "AIRLINE_CODE"
+airline_flights <- full_join(flights,airlines,by = c("AIRLINE_CODE"))
+
+colnames(airports) <- c("DEST_CODE","DEST_AIRPORT", "DEST_CITY", "DEST_STATE", "DEST_COUNTRY", "DEST_LATITUDE", "DEST_LONGITUDE" )
+colnames(airline_flights)[9] <- "DEST_CODE"
+airline100 <- full_join(airline_flights,airports,by = "DEST_CODE")
+
+colnames(airports) <- c("ORIGIN_CODE","ORIGIN_AIRPORT", "ORIGIN_CITY", "ORIGIN_STATE", "ORIGIN_COUNTRY", "ORIGIN_LATITUDE", "ORIGIN_LONGITUDE" )
+colnames(airline100)[8] <- "ORIGIN_CODE"
+airline200 <- full_join(airline100,airports,by = "ORIGIN_CODE")
+```
+
+Then, using data manipulaton functions, I have created two new variables: LOSS (delay produced during air time) and AVG_SPEED (measured in miles per hour). These variables will be helpful to find insights in the EDA section.
+Finally, I have ordered the variables in meaningful way and deleted those that I didn't need for my analysis.
+
+```{r message=FALSE, warning=FALSE, error=FALSE}
+aircraft <- airline200 %>% 
+  mutate(LOSS = ARRIVAL_DELAY - DEPARTURE_DELAY, AVG_SPEED = DISTANCE / (AIR_TIME/60) ) %>%  #  var.creation
+  select(1:5,32,6:8,39:44,9,33:38,10:18,46,19:23,45,24:31) %>% # Ordering the variables in a meaningful order
+  select(1:46,-1,-7,-8,-13,-16,-17,-20,-27,-33) %>%  #variables selection and elimination of unnecesary ones
+  arrange(DAY,MONTH, SCHEDULED_DEPARTURE, AIRLINE) #arrange in a date basis
+```
+
+####Dataset
+
+The final dataset contains **5819079 observations and 37 variables** and it looks the following:
+
+```{r message=FALSE, warning=FALSE, error=FALSE}
+datatable(head(aircraft, n = 100), class = 'cell-border stripe') # Full image of the dataset
+```
+
+
+####Summary Information
+
+Below, there is a summary information of the most important variables in our study. Particularly,  *DEPARTURE_DELAY*, *ARRIVAL_DELAY* and *LOSS* are crutial. At a first glance, looks like delays are mainly produced in the departure. A negative value for *LOSS* ( = *ARRIVAL_DELAY* - *DEPARTURE_DELAY*)  means that the plane has recovered time in the air. A deeper study on this topic will be done in the EDA section.
+
+```{r message=FALSE, warning=FALSE, error=FALSE}
+aircraft_summary <- aircraft %>%   # select the variables that we want to summarize
+  select(DEPARTURE_DELAY, ARRIVAL_DELAY, LOSS, DISTANCE, AIR_TIME, AVG_SPEED, ELAPSED_TIME, TAXI_IN, TAXI_OUT)
+  
+  my.summary <- function(x, na.rm=TRUE){       # create a function to display the summary
+    result <- c(Mean = format(round(mean(x, na.rm = na.rm),digits = 2)),
+                SD = format(round(sd(x, na.rm = na.rm), digits = 2)),
+                Median = format(round(median(x, na.rm = na.rm), digits = 2)),
+                Min = format(round(min(x, na.rm = na.rm), digits = 2)),
+                Max = format(round(max(x, na.rm = na.rm), digits = 2)), 
+                N_Obs = length(x),
+                N_NA = sum(is.na(x)))
+  }
+  summary_aircraft <- sapply(aircraft_summary, my.summary)  # apply the function to aicraft_summary
+  datatable(summary_aircraft, class = 'cell-border stripe', options = list(dom = 't')) #table of the summary
+```
+
+#### Missing Values Treatment
+
+While it may seem that missing values should have been addressed earlier in the report, the reality is that they  are not a big concern for our study (explained below). Let's take a look at the next table showing the number and percenatge of missing values per variable:
+
+```{r message=FALSE, warning=FALSE, error=FALSE}
+ missing_values <- data.frame(  class = sapply(aircraft, class),
+                          missing.count = colSums(is.na(aircraft)),
+                          missing.pct = paste(round(colSums(is.na(aircraft)) / nrow(aircraft) * 100, digits = 1), "%", sep = ""))
+  
+datatable(missing_values, class = 'cell-border stripe', options = list(order = list(3, 'desc'))) 
+# Table in descending order by percentage of missing values
+```
+
+The missing values can be divided in 3 categories: 
+
+1. Missing values coming from *reason for delays* variables.
+
+* The biggest issue  here is the 81.7% of missing values for these five variables. Fortunately,  the reason for this is that 81.7% of the flights are not delayed and therefore don't have values on the  delay cause . While we could have imputed values of 0, missing values in these variables allow to quickly differentiate that a particular flight is not delayed. Therefore, there is no need to do anything with these missing values
+
+
+2. Missing values coming from *Location* variables
+
+* For this type, 8.4% of the values are missing. However, there is no reason to worry about because the object of our study is the delay time, and while we don't have 8.4% of the location codes, we still have access to the delay times, which is our main variable of study.
+
+
+3. Missing values coming from *delay time* variables
+
+* The third type is the one that we should be worry about as it directly  impacts our variable of study. However, further analysis shows that these missing values match with the observations where cancelled or diverted flights occur, and logically there is no data of arrival time for a fligth that has been cancelled. 
+
+As a consequence, we are not missing any important information and we can proceed to the EDA without any modification.
+
+###Exploratory Data Analysis {.tabset .tabset-fade}
+
+#### General EDA
+
+Once the cleaning process is over and the data prepared , some initial visulaizations can help to better understand the dataset.
+
+Let's first take a look at all of the airport in the U.S territory. Did you know there were so many airports?
+*Please, zoom in and select an icon to see the airport's name*
+
+```{r message=FALSE, warning=FALSE, error=FALSE}
+df = data.frame(Lat = unique(aircraft$ORIGIN_LATITUDE), Long =  unique(aircraft$ORIGIN_LONGITUDE))
+leaflet(df) %>% 
+  addTiles() %>% 
+  addAwesomeMarkers(label = unique(aircraft$ORIGIN_AIRPORT))
+```
+
+Next, let's take a look at the barplot of the number of flights per airline. Southwest was by far the airline that had the most flights in 2015. It was in fact the only airline with over a million flights within the U.S territory. 
+ 
+```{r message=FALSE, warning=FALSE, error=FALSE}
+avg_nflights_airline <- length(aircraft$AIRLINE) / length(unique(aircraft$AIRLINE))
+
+ggplot(aircraft, aes(x = AIRLINE)) +
+  geom_bar() +
+  geom_hline(yintercept = avg_nflights_airline, col = "blue") + 
+  coord_flip() + 
+  theme_tufte() +
+  labs( x = "Airline", y = "Number of flights ") +
+  ggtitle("Number of flights per Airline", subtitle = "Blue vertical line: Average number of flights of the airlines")
+```
+
+What days of the week are the most popular to fly? The next visualization shows a barplot of the number of flights per day of the week. 
+```{r message=FALSE, warning=FALSE, error=FALSE}
+aircraft$DAY_OF_WEEK[aircraft$DAY_OF_WEEK == 1] = 'Monday'
+aircraft$DAY_OF_WEEK[aircraft$DAY_OF_WEEK == 2] = 'Tuesday'
+aircraft$DAY_OF_WEEK[aircraft$DAY_OF_WEEK == 3] = 'Wednesday'
+aircraft$DAY_OF_WEEK[aircraft$DAY_OF_WEEK == 4] = 'Thursday'
+aircraft$DAY_OF_WEEK[aircraft$DAY_OF_WEEK == 5] = 'Friday'
+aircraft$DAY_OF_WEEK[aircraft$DAY_OF_WEEK == 6] = 'Saturday'
+aircraft$DAY_OF_WEEK[aircraft$DAY_OF_WEEK == 7] = 'Sunday'
+
+avg_nflights_day <- length(aircraft$DAY_OF_WEEK) / length(unique(aircraft$DAY_OF_WEEK))
+
+ggplot(aircraft, aes(x = factor(DAY_OF_WEEK), fill = AIRLINE)) +
+  geom_bar() +
+  geom_hline(yintercept = avg_nflights_day, col = "blue") + 
+  theme_tufte() +
+  coord_flip()+
+  labs( x = "Day of the week", y = "Number of flights ")+
+  ggtitle("Number of flights per Day of the week", subtitle = "Blue line represents Average of flights in any given day")
+```
+
+Thursdays are the most popualar days to fly! However, did you realize that Saturdays have 15% less travellers than any other day?  It might be a good idea to fly on Saturdays if you don't like crowded airports!
+
+Let's now take a look to the variable that we created: *AVG_SPEED*
+
+
+```{r message=FALSE, warning=FALSE, error=FALSE}
+aircraft_small <- aircraft[sample(nrow(aircraft), 1000), ] # sample of 1000 obsevations (takes forever otherwise)
+ggplot(aircraft_small, aes(x = AVG_SPEED, y = DISTANCE)) +
+  geom_point() +
+  geom_smooth() +
+  theme_tufte() +
+  scale_y_continuous(limits = c(0, 3000)) +
+  labs( x = "Average Speed(miles/hour)", y = "Distance(miles) ") +
+  ggtitle("Average Speed versus Distance")
+
+```
+
+As it can be seen, the longer the fligth,  the higher the average speed of the plane. In fact, almost every flight with an average speed of 500 miles/hour or higher had a distance of at least 1000 miles.
+
+What about the time ellapsed between the airplane touches the ground and the gate arrival at the destination? That time where all the passengers are impatient to unfasten their security belts...are there also more efficient airlines?
+```{r message=FALSE, warning=FALSE, error=FALSE}
+ggplot(aircraft, aes(y = TAXI_IN, x = AIRLINE, fill = AIRLINE)) +
+  geom_boxplot() + 
+  scale_y_continuous(limits = c(0, 20)) +
+  geom_hline(yintercept =  mean(aircraft$TAXI_IN, na.rm = T), col = "black") + 
+  theme_tufte() +
+  coord_flip() + # this coord flips makes the boxplots horizontal
+  guides(fill = FALSE) + #removes legend
+  labs( x = "Airline", y = "Taxi in (minutes) ") +
+  ggtitle("Taxi in per Airline", subtitle = "Black line represents Average taxi in time for all airlines combined") 
+```
+
+Indeed! Some companies are on average more than 3 minutes faster than others in the Taxi in process.
+It is also very interesting to see that even if Southwest has so many flights, they are able to have one of the shortest taxi in process...their 75% quantile is lower than the combined mean of all the airlines! Southwest is certainly a good example of efficent operations.
+ 
+#### Unnormal flights
+
+Let's now focus on the main topic of the study: the delays. 
+In order to make this task easier, I have created a dataset with only delayed flights, but first,  I need to find what is the minimum time to consider a flight as *delayed*
+```{r message=FALSE, warning=FALSE, error=FALSE}
+index_delay <- which(is.na(aircraft$AIR_SYSTEM_DELAY))
+aircraft_delay <- aircraft[-index_delay,]
+min_delay <- min(aircraft_delay$ARRIVAL_DELAY)  # A flight is considered delayed if the delay is >= 15 min
+
+# Building a dataset with just delayed flights
+aircraft_delay <- aircraft %>%
+  select(18, 28:29, 33:37,1:17, 19:27,30:32) %>%  # to have the delay variables at the beginning
+  filter(ARRIVAL_DELAY >= min_delay) %>%
+  arrange(desc(ARRIVAL_DELAY), desc(DEPARTURE_DELAY))
+
+```
+Therefore a flight is considered to be delayed if it arrives to the destination airport at least 15 minutes behind schedule. Now that we have created this subset with only delayed flights, new insights can be discovered. 
+For instance, What are the distributions of the reasons for delays? 
+```{r message=FALSE, warning=FALSE, error=FALSE}
+delay_reasons <- cbind(
+  apply(aircraft_delay[,4:8],2,min),
+  apply(aircraft_delay[,4:8],2,max),
+  apply(aircraft_delay[,4:8],2,median),
+  apply(aircraft_delay[,4:8],2,mean),
+  apply(aircraft_delay[,4:8],2,sd)
+)  
+colnames(delay_reasons) <- c("Min", "max", "median", "mean", "sd")
+
+datatable(delay_reasons, class = 'cell-border stripe', options = list(dom = 't')) 
+```
+It is interesting to observe how much the median values differ from the mean values. This happens for the high presence of outliers as we can see with the maximum values of each delay reason.
+
+Not only a flight can be delayed, but it can also be cancelled and diverted. What are the chances that these outcomes occur? Take a look at the following table
+
+```{r message=FALSE, warning=FALSE, error=FALSE}
+percentage_delayed <- paste(round(length(aircraft_delay$DAY)*100/length(aircraft$DAY),2), "%", sep = "") 
+percentage_diverted <- paste(round(mean(aircraft$DIVERTED)*100, 2), "%", sep = "") 
+percentage_cancelled <- paste(round(mean(aircraft$CANCELLED)*100, 2), "%", sep = "") 
+percentage_unnormal <- paste(round((length(aircraft_delay$DAY)*100/length(aircraft$DAY) + mean(aircraft$DIVERTED)*100 + mean(aircraft$CANCELLED)*100),2), "%", sep = "") 
+
+percentage <- matrix(c(percentage_delayed,percentage_diverted, percentage_cancelled, percentage_unnormal ), ncol = 4)
+colnames(percentage) <- c('percentage_delayed', 'percentage_diverted','percentage_cancelled','percentage_unnormal')
+
+datatable(percentage, class = 'cell-border stripe', options = list(dom = 't')) 
+```
+Unnormal flights are considered those where the fligth has been delayed, diverted or cancelled. From the table above, 1 out 5 flights are unnormal. 
+
+Even if only 1.5% of the flights are cancelled, it is a subject that needs some further research. For instance, are there months where cancellations occur more often? Let's take a look!
+
+```{r message=FALSE, warning=FALSE, error=FALSE}
+index <- which(aircraft$CANCELLED == 1)
+cancel <- aircraft[index,]
+n_cancel <- length(cancel$CANCELLATION_REASON)
+canc_reason <- table(cancel$CANCELLATION_REASON) / n_cancel * 100 # perc table of the cancelation
+
+# run from here all the way until the plot
+cancel$MONTH[cancel$MONTH == 1] = 'January'
+cancel$MONTH[cancel$MONTH == 2] = 'February'
+cancel$MONTH[cancel$MONTH == 3] = 'March'
+cancel$MONTH[cancel$MONTH == 4] = 'April'
+cancel$MONTH[cancel$MONTH == 5] = 'May'
+cancel$MONTH[cancel$MONTH == 6] = 'June'
+cancel$MONTH[cancel$MONTH == 7] = 'July'
+cancel$MONTH[cancel$MONTH == 8] = 'August'
+cancel$MONTH[cancel$MONTH == 9] = 'September'
+cancel$MONTH[cancel$MONTH == 10] = 'October'
+cancel$MONTH[cancel$MONTH == 11] = 'November'
+cancel$MONTH[cancel$MONTH == 12] = 'December'
+
+cancel$CANCELLATION_REASON[cancel$CANCELLATION_REASON == 'A'] = 'Airline Carrier'
+cancel$CANCELLATION_REASON[cancel$CANCELLATION_REASON == 'B'] = 'Weather'
+cancel$CANCELLATION_REASON[cancel$CANCELLATION_REASON == 'C'] = 'National Air System'
+cancel$CANCELLATION_REASON[cancel$CANCELLATION_REASON == 'D'] = 'Security'
+
+ggplot(cancel,aes(x = MONTH, fill = CANCELLATION_REASON)) + 
+  geom_bar() +
+  theme_tufte() +
+  labs( x = "Month", y = "Number of flights cancelled ") +
+  coord_flip() + # this coord flips makes the boxplots horizontal
+  ggtitle("Number of flights canclled per month ")
+```
+
+Most of the cancellations occur during the winter months due to Weather reasons!
+
+#### Delays EDA
+
+From now on, the analysis will primarily be focus on delays. For this, we need to understand both delays at departure and at arrival. Let's take a look at their histograms.
+
+
+```{r message=FALSE, warning=FALSE, error=FALSE}
+ggplot(aircraft, aes(x = DEPARTURE_DELAY)) +
+  geom_histogram(bins = 200) +
+  geom_vline(xintercept = 0, col = "red") +
+  scale_x_continuous(limits = c(-100, 100)) +
+  labs( x = "Departure delay (minutes)", y = "Count of flights") +
+  theme_tufte() +
+  ggtitle("Histogram of delays at departure", subtitle = "Red vertical line represents departure delay equal to 0")
+```
+
+
+```{r message=FALSE, warning=FALSE, error=FALSE}
+ggplot(aircraft, aes(x = ARRIVAL_DELAY)) +
+  geom_histogram(bins = 200) +
+  geom_vline(xintercept = 0, col = "red") +
+  scale_x_continuous(limits = c(-100, 100)) +
+  labs( x = "Arrival delay (minutes)", y = "Count of flights") +
+  theme_tufte() +
+  ggtitle("Histogram of delays at arrival", subtitle = "Red vertical line represents arrival delay equal to 0")
+
+```
+
+It seems that in both histograms most of the values are concentrated to the left of the red verical line. Recall from the summary statistics in the data preparation stage that both delays at departure and delays at arrival had positive means but negative medians. This occurs because while more than half of the values are concentrated to the left of 0, there are large positive outliers causing the mean to be positive. These outliers can be seen in the right tail of the histograms.
+
+Let's now keep digging on the differences between departure and arrival delays. Personally, when I fly, I usually have the feeling that the aircraft departs behind the scheduled departure's time. However, when the plane lands, the flight is  surprisingly in advance of the arrival scheduled time. How is this possible?
+
+In order to see if this actually happens, let's take a look at the histogram of the variables that I created. *LOSS* ( = ARRIVAL_DELAY - ARRIVAL_DEPARTURE), will determine if delays are produced at departure or at the arrival. Loss basically measures the delay of the delay of the flight during the air time. For instance, a negative value for *LOSS*  means that the plane has recovered that amount in time in the air. 
+
+```{r message=FALSE, warning=FALSE, error=FALSE}
+ggplot(aircraft, aes(x = LOSS)) +
+  geom_histogram(bins = 100) +
+  geom_vline(xintercept = 0, col = "red") +
+  scale_x_continuous(limits = c(-50, 50)) +
+  labs( x = " loss (minutes)", y = "Count of flights") +
+  theme_tufte() +
+  ggtitle("Histogram of time lost during flight", subtitle = "Red vertical line represents loss equal to 0")
+```
+
+With most of the values concentrated to the left of zero, fligths tend to have a lower arrival delay than departure delay. This involves that I was actually right: flights decrease delay time while they are flying!
+
+Related to this, the next visualization shows a scatter plot between departure delays and arival delays for a random sample of 1000 fights. 
+```{r message=FALSE, warning=FALSE, error=FALSE}
+ggplot(aircraft_small, aes(DEPARTURE_DELAY, ARRIVAL_DELAY)) + #aircraft_small is the smple of 1000 flights that we used earlier
+  geom_point(aes(color = factor(AIRLINE), alpha = 0.5)) + 
+   geom_abline(intercept = 0, slope = 1) +
+  theme_tufte() +
+  xlab('Departure delay (minutes)') + ylab('Arrival delay (minutes)') +
+  ggtitle('Relationship between Departure delay and Arrival delay with Airline shown')
+```
+
+2 main ideas can be taken from this graph. First, most of the values are concentrated around 0, which reinforces the idea that only 18% of the fligths are delayed. Second, there seems to be more values below the line, which means that the value of *LOSS* is negative, or in other terms, that the delay at arrival is smaller than the delay at departure.
+
+Let's now take a look to the delays at arrival per airline with the following boxplot.
+```{r message=FALSE, warning=FALSE, error=FALSE}
+ggplot(aircraft, aes(y = ARRIVAL_DELAY, x = AIRLINE, fill = AIRLINE)) +
+  geom_boxplot() + 
+  scale_y_continuous(limits = c(-15, 15)) +
+  geom_hline(yintercept = 0, col = "black") +
+  theme_tufte() +
+  labs( x = " Airline ", y = "Arrival delay (minutes)") +
+  coord_flip() + # this coord flips makes the boxplots horizontal
+  guides(fill = FALSE) +# removes legend
+  ggtitle("Arrival Delay per Airline", subtitle = "black vertical line represents a delay = 0")
+```
+
+There are not big differences between different  airlines, but if you really value your time, flying with Delta will slightly reduce your delays at arrival.
+
+#### Interesting findings
+
+I would like to finish this analysis by showing some interesting facts that I found. Let's take a look to the best/worst arrival delays. 
+```{r message=FALSE, warning=FALSE, error=FALSE}
+ind_max <- which(aircraft$ARRIVAL_DELAY == max(aircraft$ARRIVAL_DELAY, na.rm = TRUE) )
+max_delay <- aircraft[ind_max,c( 5,8, 12,18,  28)]  
+
+datatable(max_delay, class = 'cell-border stripe', options = list(dom = 't')) 
+
+ind_min <- which(aircraft$ARRIVAL_DELAY == min(aircraft$ARRIVAL_DELAY, na.rm = TRUE) )
+min_delay <- aircraft[ind_min,c( 5,8, 12,18,  28)]  
+
+datatable(min_delay, class = 'cell-border stripe', options = list(dom = 't')) 
+
+```
+
+Do you imagine having a delay of 33 hours? That's what happenned to an American Airlnes flight due to the late plane arrival to the origin airport. On the other hand, two flights arrived to the destination 87 minutes before the scheduled arrival. The US Airways flight between Honolulu and Phoenix has a *LOSS* of -79 minutes. That pilot was certainly in a hurry!
+
+Let's finally lower the ground to the Cincinnati/Nothern Kentucky airport (CVG). Have you already booked your ticket flights for Christmas? If not, take a look at this. You should know that, on average, you will experience 15 minutes of delay at arrival if you fly with Frontier from Cincinnati. On the other side, if you fly with Delta, you will be on average 2 minutes before schedule.
+
+
+```{r message=FALSE, warning=FALSE, error=FALSE}
+delays_cincinnati <- aircraft %>%
+  filter(ORIGIN_CODE == 'CVG') %>%
+  group_by(AIRLINE) %>%
+  summarise( mean_delay = mean(ARRIVAL_DELAY, na.rm = TRUE)) %>%
+  arrange( desc(mean_delay))
+
+datatable(delays_cincinnati, class = 'cell-border stripe', options = list(dom = 't'))
+
+```
+
+Why did United Airlines had such a high value for mean delay?
+```{r message=FALSE, warning=FALSE, error=FALSE}
+UA_CVG <- aircraft %>%
+  filter(ORIGIN_CODE == 'CVG' & AIRLINE_CODE == 'UA') %>%
+  select(ARRIVAL_DELAY,  MONTH, DAY, ORIGIN_CODE) %>%
+  arrange(desc(ARRIVAL_DELAY ))
+
+datatable(UA_CVG, class = 'cell-border stripe', options = list(dom = 't'))
+```
+
+The reason is that they only had three flights from CVG, and one of them had an extremely bad delay. It probably was a diverted flight that had to do an emergency landing at CVG...
+
+On the other hand, Delta has an impressive efficiency in CVG. Take a look at the histogram of all of their flights from CVG. Most of their flights arrived well ahead to the scheduled time!
+
+```{r message=FALSE, warning=FALSE, error=FALSE}
+delays_delta_cincinnati <- aircraft %>%
+  filter(ORIGIN_CODE == 'CVG' & AIRLINE_CODE == 'DL') %>%
+  group_by(AIRLINE) 
+ 
+ggplot(delays_delta_cincinnati , aes(x = ARRIVAL_DELAY)) +
+  geom_histogram(bins = 200) +
+  geom_vline(xintercept = 0, col = "red") +
+  scale_x_continuous(limits = c(-100, 100)) +
+  labs( x = " Delay at Arrival (minutes)", y = "Count of flights") +
+  theme_tufte() +
+  ggtitle("Histogram of delays at arrival for delta in CVG")
+```
+
+
+###Summary{.tabset .tabset-fade}
+
+
+The problem statement that I have  addressed through this report is trying to reduce the time spent away from home because of flight delays. 
+
+I did this through the analysis of all the national flights that took place in the US territory in 2015.The methodology that I employed involved data preparation procedures such as the creation of new variables and exploratory data analysis on some factors that influence  flight delays.
+
+Some of the most interesting insights that we have found through this analysis are the following:
+
+* Average speed of flights grow exponentially for flights over 500 miles
+* Weekends are the least busy days to fly
+* even if Southwest is the most popular Airline for domestic flights, their operations are extremely efficent as we saw in their Taxi in process
+* A flight is considered delayed if it has a delay at arrival of at least 15 minutes
+* 1 out 5 fligts is delayed, cancelled or diverted
+* Most of the flight cancellations occur in the winter months due to weather related reasons
+* Median values for delays are negative, but mean values are poitive due to large positive outliers
+* Most of the flights have arrival delay values that are lower than the departure delay ones
+* Delta is the airline with the lowest arrival delays
+* If you are flying from CVG, avoid Frontier and fly Delta if you want to reduce your delays
+
+
+Therefore, as very general guideline, consumers should consider flying in the weekends if they don't like busy airports, avoiding winter months to reduce the likelyhood of cancellations, and flying Delta if they want to slighly reduce the delays.
+
+
+Finally, the main limitation that my study encounters is the difficulty to be specific for each consumer. In other terms, there are so many variables and information that the general guidelies might not be useful for many situations. For instance, Delta possibly has bad delay times at some airports, but it is very hard for my analysis to capture all the specific situations. As a consequece, I can just analyze the situation from an upper level.
+
+In order to keep building on this report, a  regression analysis and machine learning techniques could be applied to predict not only delay times, but also flight cancellations. However,  there are some many unpredictable factors that it would be impossible to address this problem fully just with data analysis.
+
+
+
+
+
+
+
