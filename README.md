@@ -1,5 +1,5 @@
-# Rproject
-To acess the final project: http://rpubs.com/vallesan/336775
+# A study on flight delays using R: (BANA 8090)	
+To see the final project: http://rpubs.com/vallesan/336775
 
 
 This was the final project for the data wrangling in R class that I took for the MS business analytics program in the Univeristy of Cincinnati.
