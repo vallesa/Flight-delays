@@ -10,5 +10,5 @@ In this project, I perform data analysis using R on more than 7,000,000 flights 
 
 
 
-The R file attached is the R markdown that I used to present my project. The CSV attached files where I got the data from. The  file with the flights information was bigger than 25MB, so I couldn't attach it to GitHub. However,  You can have access to all files in the following link:https://www.kaggle.com/usdot/flight-delays
+The R file attached is the R markdown that I used to present my project. The CSV attached files have the data that I used to perform the analysis. The  main file with all the flights information was bigger than 25MB, so I couldn't attach it to GitHub. However,  You can have access to all files in the following link:https://www.kaggle.com/usdot/flight-delays
 
