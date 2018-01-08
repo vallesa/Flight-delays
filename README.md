@@ -9,5 +9,5 @@ In this project, I performed data analysis using R on more than 7,000,000 flight
 
 
 
-The R file attached is the R markdown that I used to present my project. To access to The CSV files that I used to perform the analysis, you can go to the following link:https://www.kaggle.com/usdot/flight-delays
+The R markdown file attached contains the R markdown that I used to present my project, containing as well the code from the r file that is also attached. To access to The CSV files that I used to perform the analysis, you can go to the following link:https://www.kaggle.com/usdot/flight-delays
 
