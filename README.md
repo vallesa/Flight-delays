@@ -5,7 +5,7 @@ To see the final project: http://rpubs.com/vallesan/336775
 
 
 
-In this project, I perform data analysis using R on more than 7,000,000 flights that took place in the United States during 2015 and I	propose recommendations on what airlines, airports and months to fly to minimize delays
+In this project, I performed data analysis using R on more than 7,000,000 flights that took place in the United States during 2015 and I	proposed recommendations on what airlines, airports and months to fly to minimize delays
 
 
 
